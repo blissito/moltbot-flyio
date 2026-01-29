@@ -27,7 +27,7 @@ Deploy your personal AI assistant to [Fly.io](https://fly.io) in minutes.
 Run this command to deploy MoltBot with an interactive installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/moltbot/moltbot-flyio/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/blissito/moltbot-flyio/main/install.sh | bash
 ```
 
 The installer will:
@@ -46,7 +46,7 @@ The installer will:
 ### Step 1: Clone this repository
 
 ```bash
-git clone https://github.com/moltbot/moltbot-flyio.git
+git clone https://github.com/blissito/moltbot-flyio.git
 cd moltbot-flyio
 ```
 
