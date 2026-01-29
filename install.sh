@@ -18,6 +18,7 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 WHITE='\033[1;37m'
+DIM='\033[2m'
 NC='\033[0m' # No Color
 
 # Symbols
@@ -113,15 +114,22 @@ prompt_confirm() {
     local result
 
     if [ "$default" = "y" ]; then
-        printf "${CYAN}?${NC} ${prompt} ${WHITE}(Y/n)${NC}: " > /dev/tty
+        printf "${CYAN}?${NC} ${prompt} ${DIM}(Y/n, enter: Yes)${NC} " > /dev/tty
     else
-        printf "${CYAN}?${NC} ${prompt} ${WHITE}(y/N)${NC}: " > /dev/tty
+        printf "${CYAN}?${NC} ${prompt} ${DIM}(y/N, enter: No)${NC} " > /dev/tty
     fi
     read -r result < /dev/tty
 
     result="${result:-$default}"
 
-    [[ "$result" =~ ^[Yy]$ ]]
+    # Show what was selected
+    if [[ "$result" =~ ^[Yy]$ ]]; then
+        echo -e "  ${GREEN}✓${NC} Yes" > /dev/tty
+        return 0
+    else
+        echo -e "  ${DIM}✗ No${NC}" > /dev/tty
+        return 1
+    fi
 }
 
 check_command() {
