@@ -199,11 +199,11 @@ generate_config_json() {
         auth_profile='"openai:default": { "mode": "token", "provider": "openai" }'
     fi
 
-    # Build channels config dynamically
+    # Build channels config dynamically (following official schema)
     local channels_config=""
 
     if [ "$WHATSAPP_ENABLED" = "true" ]; then
-        channels_config="${channels_config}\"whatsapp\": { \"enabled\": true, \"dmPolicy\": \"pairing\", \"sendReadReceipts\": true, \"textChunkLimit\": 4000 },"
+        channels_config="${channels_config}\"whatsapp\": { \"dmPolicy\": \"pairing\", \"sendReadReceipts\": true },"
     fi
 
     if [ "$TELEGRAM_ENABLED" = "true" ]; then
@@ -216,9 +216,9 @@ generate_config_json() {
 
     if [ "$DISCORD_ENABLED" = "true" ]; then
         if [ -n "$DISCORD_TOKEN" ]; then
-            channels_config="${channels_config}\"discord\": { \"enabled\": true, \"token\": \"${DISCORD_TOKEN}\", \"dm\": { \"dmPolicy\": \"pairing\" } },"
+            channels_config="${channels_config}\"discord\": { \"enabled\": true, \"token\": \"${DISCORD_TOKEN}\", \"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
         else
-            channels_config="${channels_config}\"discord\": { \"enabled\": true, \"dm\": { \"dmPolicy\": \"pairing\" } },"
+            channels_config="${channels_config}\"discord\": { \"enabled\": true, \"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
         fi
     fi
 
@@ -226,7 +226,7 @@ generate_config_json() {
         local slack_tokens=""
         [ -n "$SLACK_BOT_TOKEN" ] && slack_tokens="\"botToken\": \"${SLACK_BOT_TOKEN}\", "
         [ -n "$SLACK_APP_TOKEN" ] && slack_tokens="${slack_tokens}\"appToken\": \"${SLACK_APP_TOKEN}\", "
-        channels_config="${channels_config}\"slack\": { \"enabled\": true, ${slack_tokens}\"dmPolicy\": \"pairing\" },"
+        channels_config="${channels_config}\"slack\": { \"enabled\": true, ${slack_tokens}\"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
     fi
 
     # Remove trailing comma
@@ -245,13 +245,8 @@ generate_config_json() {
 {
   "gateway": {
     "port": 3000,
-    "trustedProxies": ["172.16.7.18"],
     "auth": {
-      "mode": "token",
       "token": "${gateway_token}"
-    },
-    "controlUi": {
-      "allowInsecureAuth": true
     }
   },
   "agents": {
