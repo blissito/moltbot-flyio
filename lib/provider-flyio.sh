@@ -119,10 +119,19 @@ provider_create_app() {
             fi
 
             echo ""
-            app_name=$(prompt_input "Try a different name" "$suggested_name")
+            local input=$(prompt_input "Try a different name" "$suggested_name")
 
-            if [[ ! "$app_name" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]] && [[ ! "$app_name" =~ ^[a-z0-9]$ ]]; then
-                log_warn "App name must be lowercase, alphanumeric, and can contain hyphens"
+            # Normalize: lowercase, replace invalid chars with hyphens, collapse multiple hyphens
+            app_name=$(echo "$input" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
+
+            # Show if normalization changed the name
+            if [ "$input" != "$app_name" ]; then
+                log_info "Normalized to: ${WHITE}${app_name}${NC}"
+            fi
+
+            # Validate not empty
+            if [ -z "$app_name" ]; then
+                log_warn "App name cannot be empty"
                 continue
             fi
         elif echo "$create_output" | grep -qi "error"; then
