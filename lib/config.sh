@@ -189,7 +189,7 @@ gather_channels() {
 # ============================================================================
 
 generate_config_json() {
-    local gateway_token="${1:-$GATEWAY_TOKEN}"
+    # Token comes from CLAWDBOT_GATEWAY_TOKEN env var, not from config file
 
     # Set auth profile based on provider
     local auth_profile
@@ -241,13 +241,12 @@ generate_config_json() {
     plugins_entries=$(echo "$plugins_entries" | sed 's/,$//')
 
     # Generate the JSON config
+    # Note: gateway.auth.token comes from CLAWDBOT_GATEWAY_TOKEN env var
     cat << EOF
 {
   "gateway": {
     "port": 3000,
-    "auth": {
-      "token": "${gateway_token}"
-    }
+    "bind": "lan"
   },
   "agents": {
     "defaults": {

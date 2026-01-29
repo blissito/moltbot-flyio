@@ -253,18 +253,9 @@ provider_write_config() {
     # Fix permissions on /data (volume might be root-owned, but container runs as node)
     fly ssh console --app "$app_name" -C "sudo chown -R node:node /data 2>/dev/null || true" > /dev/null 2>&1
 
-    # Encode config as base64 (no line breaks) to avoid stdin/pipe issues with fly ssh
-    local encoded_config
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        encoded_config=$(echo "$config_json" | base64)
-    else
-        encoded_config=$(echo "$config_json" | base64 -w0)
-    fi
-    # Remove any line breaks that macOS base64 might add
-    encoded_config=$(echo "$encoded_config" | tr -d '\n')
-
-    # Write config file using base64 decode on remote
-    if ! fly ssh console --app "$app_name" -C "echo '$encoded_config' | base64 -d > /data/moltbot.json" 2>/dev/null; then
+    # Write config file using tee (official Fly.io method for piping to remote)
+    # See: https://docs.molt.bot/platforms/fly#writing-config-via-ssh
+    if ! echo "$config_json" | fly ssh console --app "$app_name" -C "tee /data/moltbot.json" > /dev/null 2>&1; then
         log_error "Failed to write config file"
         return 1
     fi
