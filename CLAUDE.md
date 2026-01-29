@@ -1,5 +1,9 @@
 # MoltBot Development Notes
 
+## Recordatorios para Bliss
+
+- [ ] **Explicar el método `tee` para escribir archivos via SSH en Fly.io** - Por qué `fly ssh console -C "cat > file"` no funciona pero `echo "content" | fly ssh console -C "tee file"` sí.
+
 ## TODOs
 
 - [ ] Validar formato de API keys y tokens antes de continuar:
