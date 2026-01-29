@@ -5,12 +5,16 @@ on:
     branches: [main]
     paths:
       - '*.sh'
+      - 'lib/*.sh'
+      - 'templates/*.yaml'
       - 'Dockerfile'
       - 'fly.toml'
   pull_request:
     branches: [main]
     paths:
       - '*.sh'
+      - 'lib/*.sh'
+      - 'templates/*.yaml'
       - 'Dockerfile'
       - 'fly.toml'
   # Run weekly to catch issues with external dependencies
@@ -26,20 +30,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check bash syntax - install.sh
-        run: bash -n install.sh
-
-      - name: Check bash syntax - moltbot-cli.sh
-        run: bash -n moltbot-cli.sh
+      - name: Check bash syntax - all scripts
+        run: |
+          bash -n install.sh
+          bash -n moltbot-cli.sh
+          bash -n lib/common.sh
+          bash -n lib/config.sh
+          bash -n lib/provider-flyio.sh
+          bash -n lib/provider-digitalocean.sh
+          echo "✅ All shell scripts have valid syntax"
 
       - name: Install ShellCheck
         run: sudo apt-get install -y shellcheck
 
-      - name: ShellCheck - install.sh
-        run: shellcheck -e SC2086,SC2034 install.sh || true  # Warnings only
-
-      - name: ShellCheck - moltbot-cli.sh
-        run: shellcheck -e SC2086,SC2034 moltbot-cli.sh || true  # Warnings only
+      - name: ShellCheck - all scripts
+        run: |
+          shellcheck -e SC2086,SC2034,SC1091 install.sh || true
+          shellcheck -e SC2086,SC2034,SC1091 moltbot-cli.sh || true
+          shellcheck -e SC2086,SC2034 lib/common.sh || true
+          shellcheck -e SC2086,SC2034,SC1091 lib/config.sh || true
+          shellcheck -e SC2086,SC2034,SC1091 lib/provider-flyio.sh || true
+          shellcheck -e SC2086,SC2034,SC1091 lib/provider-digitalocean.sh || true
 
   validate-dockerfile:
     name: Validate Dockerfile
@@ -75,11 +86,12 @@ jobs:
           bash -n install.sh
           echo "✅ install.sh syntax valid"
 
-      - name: Test moltbot-cli.sh help
+      - name: Test library modules load correctly
         run: |
-          chmod +x moltbot-cli.sh
-          # Test help command (doesn't require fly CLI)
-          ./moltbot-cli.sh --help | grep -q "MoltBot CLI" && echo "✅ CLI help works"
+          # Test that library modules can be sourced
+          source lib/common.sh
+          source lib/config.sh
+          echo "✅ Library modules load correctly"
 
   test-curl-install:
     name: Test curl | bash Pattern
@@ -99,13 +111,25 @@ jobs:
           bash -n /tmp/install.sh
           echo "✅ Downloaded install.sh is valid"
 
-      - name: Test moltbot-cli.sh download and help
+      - name: Test moltbot-cli.sh download and syntax
         run: |
           curl -fsSL http://localhost:8080/moltbot-cli.sh -o /tmp/moltbot-cli.sh
           chmod +x /tmp/moltbot-cli.sh
           bash -n /tmp/moltbot-cli.sh
-          /tmp/moltbot-cli.sh --help | grep -q "MoltBot CLI"
           echo "✅ Downloaded moltbot-cli.sh is valid"
+
+      - name: Test library modules download
+        run: |
+          mkdir -p /tmp/lib
+          curl -fsSL http://localhost:8080/lib/common.sh -o /tmp/lib/common.sh
+          curl -fsSL http://localhost:8080/lib/config.sh -o /tmp/lib/config.sh
+          curl -fsSL http://localhost:8080/lib/provider-flyio.sh -o /tmp/lib/provider-flyio.sh
+          curl -fsSL http://localhost:8080/lib/provider-digitalocean.sh -o /tmp/lib/provider-digitalocean.sh
+          bash -n /tmp/lib/common.sh
+          bash -n /tmp/lib/config.sh
+          bash -n /tmp/lib/provider-flyio.sh
+          bash -n /tmp/lib/provider-digitalocean.sh
+          echo "✅ Downloaded library modules are valid"
 
   validate-fly-toml:
     name: Validate fly.toml

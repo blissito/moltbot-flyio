@@ -1,38 +1,23 @@
 #!/bin/bash
-# MoltBot CLI - Manage your MoltBot deployment on Fly.io
-# Usage: curl -fsSL https://raw.githubusercontent.com/blissito/moltbot-flyio/main/moltbot-cli.sh | bash -s -- <command>
+# MoltBot CLI - Manage your MoltBot deployment on Fly.io or DigitalOcean
+# Usage: ./moltbot-cli.sh <command> [options]
 
 set -e
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-WHITE='\033[1;37m'
-DIM='\033[2m'
-NC='\033[0m'
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Symbols
-CHECK="${GREEN}✓${NC}"
-CROSS="${RED}✗${NC}"
-ARROW="${CYAN}→${NC}"
-WARN="${YELLOW}⚠${NC}"
+# Source library modules
+source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/config.sh"
+
+# Provider (detected or specified)
+CLOUD_PROVIDER=""
+APP_NAME=""
 
 # ============================================================================
-# Helper Functions
+# Help
 # ============================================================================
-
-log_info() { echo -e "${ARROW} $1"; }
-log_success() { echo -e "${CHECK} $1"; }
-log_error() { echo -e "${CROSS} ${RED}$1${NC}"; }
-log_warn() { echo -e "${WARN} ${YELLOW}$1${NC}"; }
-
-print_banner() {
-    echo -e "${CYAN}"
-    echo "  MoltBot CLI v1.0.0"
-    echo -e "${NC}"
-}
 
 print_help() {
     print_banner
@@ -53,111 +38,111 @@ print_help() {
     echo -e "  ${CYAN}update${NC}              Update MoltBot to latest version"
     echo ""
     echo -e "${WHITE}Options:${NC}"
-    echo -e "  ${CYAN}--app${NC} <name>        Specify app name (auto-detects from fly.toml)"
+    echo -e "  ${CYAN}--app${NC} <name>        Specify app name (auto-detects from config files)"
+    echo -e "  ${CYAN}--provider${NC} <name>   Specify provider (flyio|digitalocean)"
     echo ""
     echo -e "${WHITE}Examples:${NC}"
     echo "  moltbot-cli.sh status"
     echo "  moltbot-cli.sh add-telegram --app my-moltbot"
-    echo "  moltbot-cli.sh logs"
+    echo "  moltbot-cli.sh logs --provider digitalocean"
     echo ""
 }
 
 # ============================================================================
-# Dependency Management
+# Provider Detection
 # ============================================================================
 
-ensure_jq() {
-    if command -v jq &> /dev/null; then
+detect_provider() {
+    if [ -n "$CLOUD_PROVIDER" ]; then
+        source "$SCRIPT_DIR/lib/provider-${CLOUD_PROVIDER}.sh"
         return 0
     fi
 
-    log_warn "jq not found. It's required for channel management."
-    echo ""
-
-    # Detect OS and offer auto-install
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        if command -v brew &> /dev/null; then
-            read -p "Install jq with Homebrew? (Y/n) " INSTALL_JQ
-            if [[ "${INSTALL_JQ:-y}" =~ ^[Yy]$ ]]; then
-                log_info "Installing jq..."
-                brew install jq
-                if command -v jq &> /dev/null; then
-                    log_success "jq installed!"
-                    return 0
-                fi
-            fi
-        else
-            log_info "Install jq manually:"
-            echo "  brew install jq"
-            echo "  # or download from https://stedolan.github.io/jq/download/"
-        fi
-    elif [[ -f /etc/debian_version ]]; then
-        read -p "Install jq with apt? (requires sudo) (Y/n) " INSTALL_JQ
-        if [[ "${INSTALL_JQ:-y}" =~ ^[Yy]$ ]]; then
-            log_info "Installing jq..."
-            sudo apt-get update && sudo apt-get install -y jq
-            if command -v jq &> /dev/null; then
-                log_success "jq installed!"
-                return 0
-            fi
-        fi
-    elif [[ -f /etc/redhat-release ]]; then
-        read -p "Install jq with yum? (requires sudo) (Y/n) " INSTALL_JQ
-        if [[ "${INSTALL_JQ:-y}" =~ ^[Yy]$ ]]; then
-            log_info "Installing jq..."
-            sudo yum install -y jq
-            if command -v jq &> /dev/null; then
-                log_success "jq installed!"
-                return 0
-            fi
-        fi
-    else
-        log_info "Install jq manually:"
-        echo "  # Debian/Ubuntu: sudo apt install jq"
-        echo "  # RHEL/CentOS:   sudo yum install jq"
-        echo "  # macOS:         brew install jq"
-        echo "  # Download:      https://stedolan.github.io/jq/download/"
+    # Try to detect from config files
+    if [ -f "fly.toml" ]; then
+        CLOUD_PROVIDER="flyio"
+        source "$SCRIPT_DIR/lib/provider-flyio.sh"
+        log_info "Detected provider: ${WHITE}Fly.io${NC}"
+        return 0
     fi
 
-    log_error "jq is required but not installed"
+    if [ -f "app-spec.yaml" ] || [ -f ".do/app.yaml" ]; then
+        CLOUD_PROVIDER="digitalocean"
+        source "$SCRIPT_DIR/lib/provider-digitalocean.sh"
+        log_info "Detected provider: ${WHITE}DigitalOcean${NC}"
+        return 0
+    fi
+
+    # Try Fly.io first (most common)
+    if check_command fly && fly auth whoami &> /dev/null; then
+        CLOUD_PROVIDER="flyio"
+        source "$SCRIPT_DIR/lib/provider-flyio.sh"
+        return 0
+    fi
+
+    # Try DigitalOcean
+    if check_command doctl && doctl account get &> /dev/null; then
+        CLOUD_PROVIDER="digitalocean"
+        source "$SCRIPT_DIR/lib/provider-digitalocean.sh"
+        return 0
+    fi
+
+    log_error "Could not detect provider. Use --provider flag."
     exit 1
 }
-
-# ============================================================================
-# App Detection
-# ============================================================================
 
 detect_app() {
     if [ -n "$APP_NAME" ]; then
         return 0
     fi
 
-    # Try to get from fly.toml in current directory
-    if [ -f "fly.toml" ]; then
-        APP_NAME=$(grep "^app = " fly.toml | sed 's/app = "\(.*\)"/\1/')
-        if [ -n "$APP_NAME" ] && [ "$APP_NAME" != "your-app-name" ]; then
-            log_info "Detected app: ${WHITE}${APP_NAME}${NC}"
-            return 0
-        fi
+    # Try provider-specific detection
+    APP_NAME=$(provider_get_app_name)
+
+    if [ -n "$APP_NAME" ] && [ "$APP_NAME" != "your-app-name" ]; then
+        log_info "Detected app: ${WHITE}${APP_NAME}${NC}"
+        return 0
     fi
 
-    # Try to list fly apps and let user choose
+    # Ask user to select
     echo -e "${WHITE}Available MoltBot apps:${NC}"
-    APPS=$(fly apps list 2>/dev/null | grep -E "moltbot|molt" | awk '{print $1}' || true)
 
-    if [ -z "$APPS" ]; then
-        log_error "No MoltBot apps found. Use --app <name> to specify."
-        exit 1
-    fi
+    if [ "$CLOUD_PROVIDER" = "flyio" ]; then
+        local apps
+        apps=$(fly apps list 2>/dev/null | grep -E "moltbot|molt" | awk '{print $1}' || true)
 
-    echo "$APPS" | nl -w2 -s") "
-    echo ""
-    read -p "Select app number (or enter name): " SELECTION
+        if [ -z "$apps" ]; then
+            log_error "No MoltBot apps found. Use --app <name> to specify."
+            exit 1
+        fi
 
-    if [[ "$SELECTION" =~ ^[0-9]+$ ]]; then
-        APP_NAME=$(echo "$APPS" | sed -n "${SELECTION}p")
-    else
-        APP_NAME="$SELECTION"
+        echo "$apps" | nl -w2 -s") "
+        echo ""
+        read -p "Select app number (or enter name): " SELECTION
+
+        if [[ "$SELECTION" =~ ^[0-9]+$ ]]; then
+            APP_NAME=$(echo "$apps" | sed -n "${SELECTION}p")
+        else
+            APP_NAME="$SELECTION"
+        fi
+    elif [ "$CLOUD_PROVIDER" = "digitalocean" ]; then
+        local apps
+        apps=$(doctl apps list --format Spec.Name --no-header 2>/dev/null | grep -E "moltbot|molt" || true)
+
+        if [ -z "$apps" ]; then
+            log_error "No MoltBot apps found. Use --app <name> to specify."
+            exit 1
+        fi
+
+        echo "$apps" | nl -w2 -s") "
+        echo ""
+        read -p "Select app number (or enter name): " SELECTION
+
+        if [[ "$SELECTION" =~ ^[0-9]+$ ]]; then
+            APP_NAME=$(echo "$apps" | sed -n "${SELECTION}p")
+        else
+            APP_NAME="$SELECTION"
+        fi
     fi
 
     if [ -z "$APP_NAME" ]; then
@@ -166,15 +151,14 @@ detect_app() {
     fi
 }
 
-check_fly() {
-    if ! command -v fly &> /dev/null; then
-        log_error "Fly CLI not found. Install it first:"
-        echo "  curl -L https://fly.io/install.sh | sh"
+check_provider_cli() {
+    if ! provider_check_cli > /dev/null 2>&1; then
+        provider_check_cli
         exit 1
     fi
 
-    if ! fly auth whoami &> /dev/null; then
-        log_error "Not logged in to Fly.io. Run: fly auth login"
+    if ! provider_check_auth > /dev/null 2>&1; then
+        log_error "Not authenticated. Run the provider's login command first."
         exit 1
     fi
 }
@@ -189,10 +173,10 @@ cmd_status() {
     log_info "Fetching status for ${WHITE}${APP_NAME}${NC}..."
     echo ""
 
-    fly status --app "$APP_NAME"
+    provider_status "$APP_NAME"
 
     echo ""
-    echo -e "${WHITE}Dashboard:${NC} https://${APP_NAME}.fly.dev"
+    echo -e "${WHITE}Dashboard:${NC} $(provider_get_url "$APP_NAME")"
     echo ""
 }
 
@@ -200,24 +184,14 @@ cmd_logs() {
     detect_app
     log_info "Streaming logs for ${WHITE}${APP_NAME}${NC} (Ctrl+C to exit)..."
     echo ""
-    fly logs --app "$APP_NAME"
+    provider_logs "$APP_NAME"
 }
 
 cmd_restart() {
     detect_app
-    log_info "Restarting ${WHITE}${APP_NAME}${NC}..."
-
-    MACHINE_ID=$(fly machines list --app "$APP_NAME" --json 2>/dev/null | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-
-    if [ -z "$MACHINE_ID" ]; then
-        log_error "Could not find machine ID"
-        exit 1
-    fi
-
-    fly machines restart "$MACHINE_ID" --app "$APP_NAME"
-    log_success "Restart initiated!"
+    provider_restart "$APP_NAME"
     echo ""
-    log_info "View logs with: ${CYAN}moltbot-cli.sh logs${NC}"
+    log_info "View logs with: ${CYAN}./moltbot-cli.sh logs${NC}"
 }
 
 cmd_channels() {
@@ -225,9 +199,10 @@ cmd_channels() {
     log_info "Fetching channels for ${WHITE}${APP_NAME}${NC}..."
     echo ""
 
-    CONFIG=$(fly ssh console --app "$APP_NAME" -C "cat /data/moltbot.json 2>/dev/null" 2>/dev/null || echo "{}")
+    local config
+    config=$(provider_read_config "$APP_NAME")
 
-    if [ "$CONFIG" = "{}" ] || [ -z "$CONFIG" ]; then
+    if [ "$config" = "{}" ] || [ -z "$config" ]; then
         log_warn "No configuration found"
         return
     fi
@@ -235,24 +210,28 @@ cmd_channels() {
     echo -e "${WHITE}Enabled channels:${NC}"
 
     # Parse channels (simple grep approach, works without jq)
-    if echo "$CONFIG" | grep -q '"whatsapp"'; then
-        ENABLED=$(echo "$CONFIG" | grep -A2 '"whatsapp"' | grep '"enabled"' | grep -q 'true' && echo "yes" || echo "no")
-        [ "$ENABLED" = "yes" ] && echo -e "  ${GREEN}✓${NC} WhatsApp" || echo -e "  ${DIM}✗ WhatsApp${NC}"
+    if echo "$config" | grep -q '"whatsapp"'; then
+        local enabled
+        enabled=$(echo "$config" | grep -A2 '"whatsapp"' | grep '"enabled"' | grep -q 'true' && echo "yes" || echo "no")
+        [ "$enabled" = "yes" ] && echo -e "  ${GREEN}✓${NC} WhatsApp" || echo -e "  ${DIM}✗ WhatsApp${NC}"
     fi
 
-    if echo "$CONFIG" | grep -q '"telegram"'; then
-        ENABLED=$(echo "$CONFIG" | grep -A2 '"telegram"' | grep '"enabled"' | grep -q 'true' && echo "yes" || echo "no")
-        [ "$ENABLED" = "yes" ] && echo -e "  ${GREEN}✓${NC} Telegram" || echo -e "  ${DIM}✗ Telegram${NC}"
+    if echo "$config" | grep -q '"telegram"'; then
+        local enabled
+        enabled=$(echo "$config" | grep -A2 '"telegram"' | grep '"enabled"' | grep -q 'true' && echo "yes" || echo "no")
+        [ "$enabled" = "yes" ] && echo -e "  ${GREEN}✓${NC} Telegram" || echo -e "  ${DIM}✗ Telegram${NC}"
     fi
 
-    if echo "$CONFIG" | grep -q '"discord"'; then
-        ENABLED=$(echo "$CONFIG" | grep -A2 '"discord"' | grep '"enabled"' | grep -q 'true' && echo "yes" || echo "no")
-        [ "$ENABLED" = "yes" ] && echo -e "  ${GREEN}✓${NC} Discord" || echo -e "  ${DIM}✗ Discord${NC}"
+    if echo "$config" | grep -q '"discord"'; then
+        local enabled
+        enabled=$(echo "$config" | grep -A2 '"discord"' | grep '"enabled"' | grep -q 'true' && echo "yes" || echo "no")
+        [ "$enabled" = "yes" ] && echo -e "  ${GREEN}✓${NC} Discord" || echo -e "  ${DIM}✗ Discord${NC}"
     fi
 
-    if echo "$CONFIG" | grep -q '"slack"'; then
-        ENABLED=$(echo "$CONFIG" | grep -A2 '"slack"' | grep '"enabled"' | grep -q 'true' && echo "yes" || echo "no")
-        [ "$ENABLED" = "yes" ] && echo -e "  ${GREEN}✓${NC} Slack" || echo -e "  ${DIM}✗ Slack${NC}"
+    if echo "$config" | grep -q '"slack"'; then
+        local enabled
+        enabled=$(echo "$config" | grep -A2 '"slack"' | grep '"enabled"' | grep -q 'true' && echo "yes" || echo "no")
+        [ "$enabled" = "yes" ] && echo -e "  ${GREEN}✓${NC} Slack" || echo -e "  ${DIM}✗ Slack${NC}"
     fi
 
     echo ""
@@ -263,138 +242,143 @@ cmd_config() {
     log_info "Fetching config for ${WHITE}${APP_NAME}${NC}..."
     echo ""
 
-    fly ssh console --app "$APP_NAME" -C "cat /data/moltbot.json 2>/dev/null" 2>/dev/null || log_warn "No configuration found"
+    local config
+    config=$(provider_read_config "$APP_NAME")
+
+    if [ "$config" = "{}" ] || [ -z "$config" ]; then
+        log_warn "No configuration found"
+    else
+        echo "$config"
+    fi
     echo ""
 }
 
 cmd_add_channel() {
-    local CHANNEL="$1"
-    local TOKEN_VAR="$2"
-    local TOKEN_PROMPT="$3"
+    local channel="$1"
+    local token_prompt="$2"
 
     detect_app
 
-    log_info "Adding ${WHITE}${CHANNEL}${NC} to ${WHITE}${APP_NAME}${NC}..."
+    log_info "Adding ${WHITE}${channel}${NC} to ${WHITE}${APP_NAME}${NC}..."
 
+    local token=""
     # Get token if needed
-    if [ -n "$TOKEN_PROMPT" ]; then
+    if [ -n "$token_prompt" ]; then
         echo ""
-        log_info "$TOKEN_PROMPT"
-        read -sp "Token (hidden): " TOKEN
+        log_info "$token_prompt"
+        read -sp "Token (hidden): " token
         echo ""
 
-        if [ -z "$TOKEN" ]; then
+        if [ -z "$token" ]; then
             log_warn "No token provided. Channel will be enabled but may not work until configured."
         fi
     fi
 
     # Read current config
-    CONFIG=$(fly ssh console --app "$APP_NAME" -C "cat /data/moltbot.json 2>/dev/null" 2>/dev/null || echo "{}")
+    local config
+    config=$(provider_read_config "$APP_NAME")
 
-    if [ "$CONFIG" = "{}" ] || [ -z "$CONFIG" ]; then
+    if [ "$config" = "{}" ] || [ -z "$config" ]; then
         log_error "No configuration found. Run the installer first."
         exit 1
     fi
 
-    # Ensure jq is available (auto-install if needed)
+    # Ensure jq is available
     ensure_jq
 
+    local new_config
     # Add channel based on type
-    case "$CHANNEL" in
+    case "$channel" in
         whatsapp)
-            NEW_CONFIG=$(echo "$CONFIG" | jq '.channels.whatsapp = {"enabled": true, "dmPolicy": "pairing", "sendReadReceipts": true, "textChunkLimit": 4000}')
-            NEW_CONFIG=$(echo "$NEW_CONFIG" | jq '.plugins.entries.whatsapp = {"enabled": true}')
+            new_config=$(echo "$config" | jq '.channels.whatsapp = {"enabled": true, "dmPolicy": "pairing", "sendReadReceipts": true, "textChunkLimit": 4000}')
+            new_config=$(echo "$new_config" | jq '.plugins.entries.whatsapp = {"enabled": true}')
             ;;
         telegram)
-            if [ -n "$TOKEN" ]; then
-                NEW_CONFIG=$(echo "$CONFIG" | jq --arg token "$TOKEN" '.channels.telegram = {"enabled": true, "botToken": $token, "dmPolicy": "pairing"}')
+            if [ -n "$token" ]; then
+                new_config=$(echo "$config" | jq --arg token "$token" '.channels.telegram = {"enabled": true, "botToken": $token, "dmPolicy": "pairing"}')
             else
-                NEW_CONFIG=$(echo "$CONFIG" | jq '.channels.telegram = {"enabled": true, "dmPolicy": "pairing"}')
+                new_config=$(echo "$config" | jq '.channels.telegram = {"enabled": true, "dmPolicy": "pairing"}')
             fi
-            NEW_CONFIG=$(echo "$NEW_CONFIG" | jq '.plugins.entries.telegram = {"enabled": true}')
+            new_config=$(echo "$new_config" | jq '.plugins.entries.telegram = {"enabled": true}')
             ;;
         discord)
-            if [ -n "$TOKEN" ]; then
-                NEW_CONFIG=$(echo "$CONFIG" | jq --arg token "$TOKEN" '.channels.discord = {"enabled": true, "token": $token, "dm": {"dmPolicy": "pairing"}}')
+            if [ -n "$token" ]; then
+                new_config=$(echo "$config" | jq --arg token "$token" '.channels.discord = {"enabled": true, "token": $token, "dm": {"dmPolicy": "pairing"}}')
             else
-                NEW_CONFIG=$(echo "$CONFIG" | jq '.channels.discord = {"enabled": true, "dm": {"dmPolicy": "pairing"}}')
+                new_config=$(echo "$config" | jq '.channels.discord = {"enabled": true, "dm": {"dmPolicy": "pairing"}}')
             fi
-            NEW_CONFIG=$(echo "$NEW_CONFIG" | jq '.plugins.entries.discord = {"enabled": true}')
+            new_config=$(echo "$new_config" | jq '.plugins.entries.discord = {"enabled": true}')
             ;;
         slack)
-            if [ -n "$TOKEN" ]; then
-                NEW_CONFIG=$(echo "$CONFIG" | jq --arg token "$TOKEN" '.channels.slack = {"enabled": true, "botToken": $token, "dmPolicy": "pairing"}')
+            if [ -n "$token" ]; then
+                new_config=$(echo "$config" | jq --arg token "$token" '.channels.slack = {"enabled": true, "botToken": $token, "dmPolicy": "pairing"}')
             else
-                NEW_CONFIG=$(echo "$CONFIG" | jq '.channels.slack = {"enabled": true, "dmPolicy": "pairing"}')
+                new_config=$(echo "$config" | jq '.channels.slack = {"enabled": true, "dmPolicy": "pairing"}')
             fi
-            NEW_CONFIG=$(echo "$NEW_CONFIG" | jq '.plugins.entries.slack = {"enabled": true}')
+            new_config=$(echo "$new_config" | jq '.plugins.entries.slack = {"enabled": true}')
             ;;
     esac
 
     # Write new config
-    if ! echo "$NEW_CONFIG" | fly ssh console --app "$APP_NAME" -C "cat > /data/moltbot.json"; then
+    if ! provider_write_config "$APP_NAME" "$new_config"; then
         log_error "Failed to write config"
         exit 1
     fi
 
-    log_success "Channel ${CHANNEL} added!"
+    log_success "Channel ${channel} added!"
 
     # Restart
     log_info "Restarting to apply changes..."
-    MACHINE_ID=$(fly machines list --app "$APP_NAME" --json 2>/dev/null | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-
-    if [ -n "$MACHINE_ID" ]; then
-        fly machines restart "$MACHINE_ID" --app "$APP_NAME" > /dev/null 2>&1
-        log_success "Done! Channel ${CHANNEL} is now enabled."
+    if provider_restart "$APP_NAME" > /dev/null 2>&1; then
+        log_success "Done! Channel ${channel} is now enabled."
     else
-        log_warn "Could not restart automatically. Run: moltbot-cli.sh restart"
+        log_warn "Could not restart automatically. Run: ./moltbot-cli.sh restart"
     fi
     echo ""
 }
 
 cmd_remove_channel() {
-    local CHANNEL="$1"
+    local channel="$1"
 
-    if [ -z "$CHANNEL" ]; then
-        log_error "Usage: moltbot-cli.sh remove-channel <whatsapp|telegram|discord|slack>"
+    if [ -z "$channel" ]; then
+        log_error "Usage: ./moltbot-cli.sh remove-channel <whatsapp|telegram|discord|slack>"
         exit 1
     fi
 
     detect_app
 
-    log_info "Removing ${WHITE}${CHANNEL}${NC} from ${WHITE}${APP_NAME}${NC}..."
+    log_info "Removing ${WHITE}${channel}${NC} from ${WHITE}${APP_NAME}${NC}..."
 
     # Read current config
-    CONFIG=$(fly ssh console --app "$APP_NAME" -C "cat /data/moltbot.json 2>/dev/null" 2>/dev/null || echo "{}")
+    local config
+    config=$(provider_read_config "$APP_NAME")
 
-    if [ "$CONFIG" = "{}" ] || [ -z "$CONFIG" ]; then
+    if [ "$config" = "{}" ] || [ -z "$config" ]; then
         log_error "No configuration found"
         exit 1
     fi
 
-    # Ensure jq is available (auto-install if needed)
+    # Ensure jq is available
     ensure_jq
 
     # Remove channel
-    NEW_CONFIG=$(echo "$CONFIG" | jq "del(.channels.${CHANNEL}) | del(.plugins.entries.${CHANNEL})")
+    local new_config
+    new_config=$(echo "$config" | jq "del(.channels.${channel}) | del(.plugins.entries.${channel})")
 
     # Write new config
-    if ! echo "$NEW_CONFIG" | fly ssh console --app "$APP_NAME" -C "cat > /data/moltbot.json"; then
+    if ! provider_write_config "$APP_NAME" "$new_config"; then
         log_error "Failed to write config"
         exit 1
     fi
 
-    log_success "Channel ${CHANNEL} removed!"
+    log_success "Channel ${channel} removed!"
 
     # Restart
     log_info "Restarting to apply changes..."
-    MACHINE_ID=$(fly machines list --app "$APP_NAME" --json 2>/dev/null | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
-
-    if [ -n "$MACHINE_ID" ]; then
-        fly machines restart "$MACHINE_ID" --app "$APP_NAME" > /dev/null 2>&1
+    if provider_restart "$APP_NAME" > /dev/null 2>&1; then
         log_success "Done!"
     else
-        log_warn "Could not restart automatically. Run: moltbot-cli.sh restart"
+        log_warn "Could not restart automatically. Run: ./moltbot-cli.sh restart"
     fi
     echo ""
 }
@@ -406,8 +390,8 @@ cmd_update() {
     echo ""
 
     # Check if we're in a moltbot directory
-    if [ ! -f "fly.toml" ]; then
-        log_error "Run this command from your moltbot-flyio directory"
+    if [ ! -f "fly.toml" ] && [ ! -f "app-spec.yaml" ]; then
+        log_error "Run this command from your moltbot deployment directory"
         exit 1
     fi
 
@@ -417,7 +401,7 @@ cmd_update() {
 
     # Deploy
     log_info "Deploying update..."
-    fly deploy --app "$APP_NAME"
+    provider_deploy "$APP_NAME"
 
     log_success "Update complete!"
     echo ""
@@ -429,8 +413,8 @@ cmd_update() {
 
 main() {
     # Parse arguments
-    COMMAND=""
-    APP_NAME=""
+    local command=""
+    local extra_arg=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -438,29 +422,34 @@ main() {
                 APP_NAME="$2"
                 shift 2
                 ;;
+            --provider)
+                CLOUD_PROVIDER="$2"
+                shift 2
+                ;;
             --help|-h)
                 print_help
                 exit 0
                 ;;
             *)
-                if [ -z "$COMMAND" ]; then
-                    COMMAND="$1"
+                if [ -z "$command" ]; then
+                    command="$1"
                 else
-                    EXTRA_ARG="$1"
+                    extra_arg="$1"
                 fi
                 shift
                 ;;
         esac
     done
 
-    if [ -z "$COMMAND" ]; then
+    if [ -z "$command" ]; then
         print_help
         exit 0
     fi
 
-    check_fly
+    detect_provider
+    check_provider_cli
 
-    case "$COMMAND" in
+    case "$command" in
         status)
             cmd_status
             ;;
@@ -477,25 +466,25 @@ main() {
             cmd_config
             ;;
         add-whatsapp)
-            cmd_add_channel "whatsapp" "" ""
+            cmd_add_channel "whatsapp" ""
             ;;
         add-telegram)
-            cmd_add_channel "telegram" "TELEGRAM_TOKEN" "Get your bot token from @BotFather on Telegram"
+            cmd_add_channel "telegram" "Get your bot token from @BotFather on Telegram"
             ;;
         add-discord)
-            cmd_add_channel "discord" "DISCORD_TOKEN" "Get your bot token from https://discord.com/developers/applications"
+            cmd_add_channel "discord" "Get your bot token from https://discord.com/developers/applications"
             ;;
         add-slack)
-            cmd_add_channel "slack" "SLACK_TOKEN" "Get your bot token from https://api.slack.com/apps"
+            cmd_add_channel "slack" "Get your bot token from https://api.slack.com/apps"
             ;;
         remove-channel)
-            cmd_remove_channel "$EXTRA_ARG"
+            cmd_remove_channel "$extra_arg"
             ;;
         update)
             cmd_update
             ;;
         *)
-            log_error "Unknown command: $COMMAND"
+            log_error "Unknown command: $command"
             echo ""
             print_help
             exit 1
