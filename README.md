@@ -39,6 +39,8 @@ The installer will:
 6. Configure the gateway
 7. Output your dashboard URL and token
 
+![Deployment Successful](success.png)
+
 ---
 
 ## Manual Deployment
