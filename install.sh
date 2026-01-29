@@ -5,7 +5,7 @@ set -e
 # MoltBot Fly.io Installer
 # Deploy your personal AI assistant to Fly.io in minutes
 #
-# Usage: curl -fsSL https://raw.githubusercontent.com/moltbot/moltbot-flyio/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/blissito/moltbot-flyio/main/install.sh | bash
 # ============================================================================
 
 VERSION="2.0.0"
@@ -79,7 +79,7 @@ prompt_input() {
     else
         echo -ne "${CYAN}?${NC} ${prompt}: "
     fi
-    read -r result
+    read -r result < /dev/tty
 
     if [ -z "$result" ] && [ -n "$default" ]; then
         result="$default"
@@ -93,7 +93,7 @@ prompt_secret() {
     local result
 
     echo -ne "${CYAN}?${NC} ${prompt}: "
-    read -rs result
+    read -rs result < /dev/tty
     echo ""
 
     echo "$result"
@@ -109,7 +109,7 @@ prompt_confirm() {
     else
         echo -ne "${CYAN}?${NC} ${prompt} ${WHITE}(y/N)${NC}: "
     fi
-    read -r result
+    read -r result < /dev/tty
 
     result="${result:-$default}"
 
