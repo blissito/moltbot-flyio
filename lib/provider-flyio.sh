@@ -16,14 +16,29 @@ provider_check_cli() {
     if check_command fly || check_command flyctl; then
         log_success "flyctl installed"
         return 0
-    else
-        log_error "flyctl not found"
-        echo ""
-        log_info "Install flyctl with:"
-        echo -e "  ${WHITE}curl -L https://fly.io/install.sh | sh${NC}"
-        echo ""
-        return 1
     fi
+
+    log_warn "flyctl not found. It's required for Fly.io deployments."
+    echo ""
+
+    read -p "Install flyctl now? (Y/n) " INSTALL_FLY
+    if [[ "${INSTALL_FLY:-y}" =~ ^[Yy]$ ]]; then
+        log_info "Installing flyctl..."
+        curl -L https://fly.io/install.sh | sh
+
+        # Add to PATH for current session
+        export FLYCTL_INSTALL="${FLYCTL_INSTALL:-$HOME/.fly}"
+        export PATH="$FLYCTL_INSTALL/bin:$PATH"
+
+        if check_command fly || check_command flyctl; then
+            log_success "flyctl installed!"
+            return 0
+        fi
+    fi
+
+    log_error "flyctl is required but not installed"
+    echo -e "  Install manually: ${WHITE}curl -L https://fly.io/install.sh | sh${NC}"
+    return 1
 }
 
 provider_check_auth() {

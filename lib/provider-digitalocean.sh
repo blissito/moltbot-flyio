@@ -16,19 +16,52 @@ provider_check_cli() {
     if check_command doctl; then
         log_success "doctl installed"
         return 0
-    else
-        log_error "doctl not found"
-        echo ""
-        log_info "Install doctl with:"
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-            echo -e "  ${WHITE}brew install doctl${NC}"
+    fi
+
+    log_warn "doctl not found. It's required for DigitalOcean deployments."
+    echo ""
+
+    # Detect OS and offer auto-install
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        if command -v brew &> /dev/null; then
+            read -p "Install doctl with Homebrew? (Y/n) " INSTALL_DOCTL
+            if [[ "${INSTALL_DOCTL:-y}" =~ ^[Yy]$ ]]; then
+                log_info "Installing doctl..."
+                brew install doctl
+                if check_command doctl; then
+                    log_success "doctl installed!"
+                    return 0
+                fi
+            fi
         else
-            echo -e "  ${WHITE}snap install doctl${NC}"
+            log_info "Install doctl manually:"
+            echo -e "  ${WHITE}brew install doctl${NC}"
+        fi
+    elif [[ -f /etc/debian_version ]] || [[ -f /etc/ubuntu-release ]]; then
+        if command -v snap &> /dev/null; then
+            read -p "Install doctl with snap? (requires sudo) (Y/n) " INSTALL_DOCTL
+            if [[ "${INSTALL_DOCTL:-y}" =~ ^[Yy]$ ]]; then
+                log_info "Installing doctl..."
+                sudo snap install doctl
+                if check_command doctl; then
+                    log_success "doctl installed!"
+                    return 0
+                fi
+            fi
+        else
+            log_info "Install doctl manually:"
+            echo -e "  ${WHITE}sudo snap install doctl${NC}"
             echo -e "  # or download from https://docs.digitalocean.com/reference/doctl/how-to/install/${NC}"
         fi
-        echo ""
-        return 1
+    else
+        log_info "Install doctl manually:"
+        echo -e "  # macOS:   brew install doctl"
+        echo -e "  # Linux:   snap install doctl"
+        echo -e "  # Download: https://docs.digitalocean.com/reference/doctl/how-to/install/"
     fi
+
+    log_error "doctl is required but not installed"
+    return 1
 }
 
 provider_check_auth() {
