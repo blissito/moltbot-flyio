@@ -75,9 +75,9 @@ prompt_input() {
     local result
 
     if [ -n "$default" ]; then
-        echo -ne "${CYAN}?${NC} ${prompt} ${WHITE}(${default})${NC}: "
+        echo -ne "${CYAN}?${NC} ${prompt} ${WHITE}(${default})${NC}: " > /dev/tty
     else
-        echo -ne "${CYAN}?${NC} ${prompt}: "
+        echo -ne "${CYAN}?${NC} ${prompt}: " > /dev/tty
     fi
     read -r result < /dev/tty
 
@@ -92,9 +92,9 @@ prompt_secret() {
     local prompt="$1"
     local result
 
-    echo -ne "${CYAN}?${NC} ${prompt}: "
+    echo -ne "${CYAN}?${NC} ${prompt}: " > /dev/tty
     read -rs result < /dev/tty
-    echo ""
+    echo "" > /dev/tty
 
     echo "$result"
 }
@@ -105,9 +105,9 @@ prompt_confirm() {
     local result
 
     if [ "$default" = "y" ]; then
-        echo -ne "${CYAN}?${NC} ${prompt} ${WHITE}(Y/n)${NC}: "
+        echo -ne "${CYAN}?${NC} ${prompt} ${WHITE}(Y/n)${NC}: " > /dev/tty
     else
-        echo -ne "${CYAN}?${NC} ${prompt} ${WHITE}(y/N)${NC}: "
+        echo -ne "${CYAN}?${NC} ${prompt} ${WHITE}(y/N)${NC}: " > /dev/tty
     fi
     read -r result < /dev/tty
 
