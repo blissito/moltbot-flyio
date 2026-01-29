@@ -152,22 +152,35 @@ gather_channels() {
         TELEGRAM_ENABLED="true"
         echo ""
         log_info "Get your bot token from: ${WHITE}@BotFather on Telegram${NC}"
-        TELEGRAM_TOKEN=$(prompt_secret "Telegram Bot Token (or leave empty to configure later)")
+        TELEGRAM_TOKEN=$(prompt_secret "Telegram Bot Token")
+        if [ -z "$TELEGRAM_TOKEN" ]; then
+            log_warn "No token provided - Telegram will NOT be enabled (configure later in dashboard)"
+            TELEGRAM_ENABLED="false"
+        fi
     fi
 
     if prompt_confirm "Enable Discord?" "n"; then
         DISCORD_ENABLED="true"
         echo ""
         log_info "Get your bot token from: ${WHITE}https://discord.com/developers/applications${NC}"
-        DISCORD_TOKEN=$(prompt_secret "Discord Bot Token (or leave empty to configure later)")
+        DISCORD_TOKEN=$(prompt_secret "Discord Bot Token")
+        if [ -z "$DISCORD_TOKEN" ]; then
+            log_warn "No token provided - Discord will NOT be enabled (configure later in dashboard)"
+            DISCORD_ENABLED="false"
+        fi
     fi
 
     if prompt_confirm "Enable Slack?" "n"; then
         SLACK_ENABLED="true"
         echo ""
         log_info "Get tokens from: ${WHITE}https://api.slack.com/apps${NC}"
-        SLACK_BOT_TOKEN=$(prompt_secret "Slack Bot Token (xoxb-..., or leave empty)")
-        SLACK_APP_TOKEN=$(prompt_secret "Slack App Token (xapp-..., or leave empty)")
+        SLACK_BOT_TOKEN=$(prompt_secret "Slack Bot Token (xoxb-...)")
+        if [ -z "$SLACK_BOT_TOKEN" ]; then
+            log_warn "No token provided - Slack will NOT be enabled (configure later in dashboard)"
+            SLACK_ENABLED="false"
+        else
+            SLACK_APP_TOKEN=$(prompt_secret "Slack App Token (xapp-..., optional)")
+        fi
     fi
 
     # Generate gateway token
@@ -206,25 +219,19 @@ generate_config_json() {
         channels_config="${channels_config}\"whatsapp\": { \"dmPolicy\": \"pairing\", \"sendReadReceipts\": true },"
     fi
 
-    if [ "$TELEGRAM_ENABLED" = "true" ]; then
-        if [ -n "$TELEGRAM_TOKEN" ]; then
-            channels_config="${channels_config}\"telegram\": { \"enabled\": true, \"botToken\": \"${TELEGRAM_TOKEN}\", \"dmPolicy\": \"pairing\" },"
-        else
-            channels_config="${channels_config}\"telegram\": { \"enabled\": true, \"dmPolicy\": \"pairing\" },"
-        fi
+    # Only enable channels that require tokens if tokens are provided
+    # Otherwise the gateway will crash trying to connect without credentials
+
+    if [ "$TELEGRAM_ENABLED" = "true" ] && [ -n "$TELEGRAM_TOKEN" ]; then
+        channels_config="${channels_config}\"telegram\": { \"enabled\": true, \"botToken\": \"${TELEGRAM_TOKEN}\", \"dmPolicy\": \"pairing\" },"
     fi
 
-    if [ "$DISCORD_ENABLED" = "true" ]; then
-        if [ -n "$DISCORD_TOKEN" ]; then
-            channels_config="${channels_config}\"discord\": { \"enabled\": true, \"token\": \"${DISCORD_TOKEN}\", \"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
-        else
-            channels_config="${channels_config}\"discord\": { \"enabled\": true, \"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
-        fi
+    if [ "$DISCORD_ENABLED" = "true" ] && [ -n "$DISCORD_TOKEN" ]; then
+        channels_config="${channels_config}\"discord\": { \"enabled\": true, \"token\": \"${DISCORD_TOKEN}\", \"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
     fi
 
-    if [ "$SLACK_ENABLED" = "true" ]; then
-        local slack_tokens=""
-        [ -n "$SLACK_BOT_TOKEN" ] && slack_tokens="\"botToken\": \"${SLACK_BOT_TOKEN}\", "
+    if [ "$SLACK_ENABLED" = "true" ] && [ -n "$SLACK_BOT_TOKEN" ]; then
+        local slack_tokens="\"botToken\": \"${SLACK_BOT_TOKEN}\", "
         [ -n "$SLACK_APP_TOKEN" ] && slack_tokens="${slack_tokens}\"appToken\": \"${SLACK_APP_TOKEN}\", "
         channels_config="${channels_config}\"slack\": { \"enabled\": true, ${slack_tokens}\"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
     fi
@@ -232,12 +239,12 @@ generate_config_json() {
     # Remove trailing comma
     channels_config=$(echo "$channels_config" | sed 's/,$//')
 
-    # Build plugins entries
+    # Build plugins entries (only for channels that are actually configured)
     local plugins_entries=""
     [ "$WHATSAPP_ENABLED" = "true" ] && plugins_entries="${plugins_entries}\"whatsapp\": { \"enabled\": true },"
-    [ "$TELEGRAM_ENABLED" = "true" ] && plugins_entries="${plugins_entries}\"telegram\": { \"enabled\": true },"
-    [ "$DISCORD_ENABLED" = "true" ] && plugins_entries="${plugins_entries}\"discord\": { \"enabled\": true },"
-    [ "$SLACK_ENABLED" = "true" ] && plugins_entries="${plugins_entries}\"slack\": { \"enabled\": true },"
+    [ "$TELEGRAM_ENABLED" = "true" ] && [ -n "$TELEGRAM_TOKEN" ] && plugins_entries="${plugins_entries}\"telegram\": { \"enabled\": true },"
+    [ "$DISCORD_ENABLED" = "true" ] && [ -n "$DISCORD_TOKEN" ] && plugins_entries="${plugins_entries}\"discord\": { \"enabled\": true },"
+    [ "$SLACK_ENABLED" = "true" ] && [ -n "$SLACK_BOT_TOKEN" ] && plugins_entries="${plugins_entries}\"slack\": { \"enabled\": true },"
     plugins_entries=$(echo "$plugins_entries" | sed 's/,$//')
 
     # Generate the JSON config
