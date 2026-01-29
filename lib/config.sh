@@ -32,10 +32,25 @@ gather_app_name() {
     local default_name="${1:-mymoltbot}"
 
     while true; do
-        APP_NAME=$(prompt_input "App name (must be unique globally)" "$default_name")
+        local input=$(prompt_input "App name (must be unique globally)" "$default_name")
 
-        if [[ ! "$APP_NAME" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]] && [[ ! "$APP_NAME" =~ ^[a-z0-9]$ ]]; then
-            log_warn "App name must be lowercase, alphanumeric, and can contain hyphens"
+        # Normalize: lowercase, replace spaces/invalid chars with hyphens, collapse multiple hyphens
+        APP_NAME=$(echo "$input" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g' | sed 's/--*/-/g' | sed 's/^-//' | sed 's/-$//')
+
+        # Show if normalization changed the name
+        if [ "$input" != "$APP_NAME" ]; then
+            log_info "Normalized to: ${WHITE}${APP_NAME}${NC}"
+        fi
+
+        # Validate length
+        if [ ${#APP_NAME} -gt 63 ]; then
+            log_warn "App name must be under 63 characters"
+            continue
+        fi
+
+        # Validate not empty
+        if [ -z "$APP_NAME" ]; then
+            log_warn "App name cannot be empty"
             continue
         fi
 
