@@ -1,12 +1,12 @@
 # MoltBot Fly.io Deployment
 
-Deploy your personal AI assistant to [Fly.io](https://fly.io) in minutes.
+Deploy your personal AI assistant (Claude or OpenAI) to [Fly.io](https://fly.io) in minutes.
 
 ## Requirements
 
 - [Fly.io account](https://fly.io) (free tier works)
 - [flyctl CLI](https://fly.io/docs/hands-on/install-flyctl/) installed
-- [Anthropic API key](https://console.anthropic.com/settings/keys)
+- [Anthropic API key](https://console.anthropic.com/settings/keys) **or** [OpenAI API key](https://platform.openai.com/api-keys)
 
 ## Cost Estimate
 
@@ -327,3 +327,11 @@ fly deploy --app your-app-name
 - [Full Fly.io documentation](https://docs.molt.bot/platforms/fly)
 - [MoltBot main repository](https://github.com/moltbot/moltbot)
 - [MoltBot documentation](https://docs.molt.bot)
+
+---
+
+## Author
+
+Created by **[@blissito](https://github.com/blissito)** · [fixtergeek.com](https://fixtergeek.com)
+
+If this helps you, consider [sponsoring](https://github.com/sponsors/blissito).

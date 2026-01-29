@@ -228,32 +228,72 @@ gather_config() {
 
     REGION=$(prompt_input "Select region" "iad")
 
-    # Anthropic API Key
+    # Provider selection
     echo ""
-    log_info "Get your API key from: ${WHITE}https://console.anthropic.com/settings/keys${NC}"
-    ANTHROPIC_KEY=$(prompt_secret "Anthropic API Key")
+    echo -e "${WHITE}Select AI provider:${NC}"
+    echo "  1. Anthropic (Claude) - Recommended"
+    echo "  2. OpenAI (GPT)"
+    echo ""
 
-    if [ -z "$ANTHROPIC_KEY" ]; then
+    PROVIDER_CHOICE=$(prompt_input "Select provider (1-2)" "1")
+
+    case "$PROVIDER_CHOICE" in
+        2) PROVIDER="openai" ;;
+        *) PROVIDER="anthropic" ;;
+    esac
+
+    # API Key based on provider
+    echo ""
+    if [ "$PROVIDER" = "anthropic" ]; then
+        log_info "Get your API key from: ${WHITE}https://console.anthropic.com/settings/keys${NC}"
+        API_KEY=$(prompt_secret "Anthropic API Key")
+        API_KEY_NAME="ANTHROPIC_API_KEY"
+    else
+        log_info "Get your API key from: ${WHITE}https://platform.openai.com/api-keys${NC}"
+        API_KEY=$(prompt_secret "OpenAI API Key")
+        API_KEY_NAME="OPENAI_API_KEY"
+    fi
+
+    if [ -z "$API_KEY" ]; then
         log_error "API key is required"
         exit 1
     fi
 
-    # Model selection
+    # Model selection based on provider
     echo ""
-    echo -e "${WHITE}Select AI model:${NC}"
-    echo "  1. claude-haiku-4-5    - Fastest, cheapest"
-    echo "  2. claude-sonnet-4-5   - Balanced (recommended)"
-    echo "  3. claude-opus-4-5     - Most capable, expensive"
-    echo ""
+    if [ "$PROVIDER" = "anthropic" ]; then
+        echo -e "${WHITE}Select Claude model:${NC}"
+        echo "  1. claude-haiku-4-5    - Fastest, cheapest"
+        echo "  2. claude-sonnet-4-5   - Balanced (recommended)"
+        echo "  3. claude-opus-4-5     - Most capable"
+        echo ""
 
-    MODEL_CHOICE=$(prompt_input "Select model (1-3)" "2")
+        MODEL_CHOICE=$(prompt_input "Select model (1-3)" "2")
 
-    case "$MODEL_CHOICE" in
-        1) MODEL="anthropic/claude-haiku-4-5" ;;
-        2) MODEL="anthropic/claude-sonnet-4-5" ;;
-        3) MODEL="anthropic/claude-opus-4-5" ;;
-        *) MODEL="anthropic/claude-sonnet-4-5" ;;
-    esac
+        case "$MODEL_CHOICE" in
+            1) MODEL="anthropic/claude-haiku-4-5" ;;
+            2) MODEL="anthropic/claude-sonnet-4-5" ;;
+            3) MODEL="anthropic/claude-opus-4-5" ;;
+            *) MODEL="anthropic/claude-sonnet-4-5" ;;
+        esac
+        FALLBACK_MODEL="anthropic/claude-haiku-4-5"
+    else
+        echo -e "${WHITE}Select OpenAI model:${NC}"
+        echo "  1. gpt-4o-mini         - Fastest, cheapest"
+        echo "  2. gpt-4o              - Balanced (recommended)"
+        echo "  3. o1                  - Most capable"
+        echo ""
+
+        MODEL_CHOICE=$(prompt_input "Select model (1-3)" "2")
+
+        case "$MODEL_CHOICE" in
+            1) MODEL="openai/gpt-4o-mini" ;;
+            2) MODEL="openai/gpt-4o" ;;
+            3) MODEL="openai/o1" ;;
+            *) MODEL="openai/gpt-4o" ;;
+        esac
+        FALLBACK_MODEL="openai/gpt-4o-mini"
+    fi
 
     # Generate gateway token
     GATEWAY_TOKEN=$(openssl rand -hex 32)
@@ -341,8 +381,8 @@ create_fly_resources() {
 configure_secrets() {
     log_step "Step 6/8: Configuring secrets"
 
-    log_info "Setting ANTHROPIC_API_KEY..."
-    fly secrets set "ANTHROPIC_API_KEY=${ANTHROPIC_KEY}" --app "$APP_NAME" --stage 2>&1
+    log_info "Setting ${API_KEY_NAME}..."
+    fly secrets set "${API_KEY_NAME}=${API_KEY}" --app "$APP_NAME" --stage 2>&1
     log_success "API key configured!"
 
     log_info "Setting CLAWDBOT_GATEWAY_TOKEN..."
@@ -400,6 +440,13 @@ configure_gateway() {
 
     log_info "Creating moltbot.json configuration..."
 
+    # Set auth profile based on provider
+    if [ "$PROVIDER" = "anthropic" ]; then
+        AUTH_PROFILE='"anthropic:default": { "mode": "token", "provider": "anthropic" }'
+    else
+        AUTH_PROFILE='"openai:default": { "mode": "token", "provider": "openai" }'
+    fi
+
     # Modern config structure with agents and auth.profiles
     CONFIG_JSON=$(cat << EOF
 {
@@ -418,14 +465,14 @@ configure_gateway() {
     "defaults": {
       "model": {
         "primary": "${MODEL}",
-        "fallbacks": ["anthropic/claude-haiku-4-5"]
+        "fallbacks": ["${FALLBACK_MODEL}"]
       }
     },
     "list": [{ "id": "main", "default": true }]
   },
   "auth": {
     "profiles": {
-      "anthropic:default": { "mode": "token", "provider": "anthropic" }
+      ${AUTH_PROFILE}
     }
   },
   "channels": {
@@ -497,6 +544,7 @@ print_success() {
     echo -e "  - Review paired devices: ${CYAN}fly ssh console --app ${APP_NAME} -C 'cat /data/devices/paired.json'${NC}"
     echo -e "  - Rotate token if compromised: ${CYAN}fly secrets set CLAWDBOT_GATEWAY_TOKEN=\$(openssl rand -hex 32) --app ${APP_NAME}${NC}"
     echo ""
+    echo -e "${WHITE}Provider: ${GREEN}${PROVIDER}${NC}"
     echo -e "${WHITE}Model: ${GREEN}${MODEL}${NC}"
     echo -e "${WHITE}Memory: ${GREEN}4GB${NC} (prevents OOM errors)"
     echo -e "${WHITE}Estimated monthly cost: ${GREEN}\$22-25 USD${NC} (hosting only, API usage extra)"
@@ -516,7 +564,7 @@ main() {
     print_banner
 
     echo -e "${WHITE}This script will deploy MoltBot to Fly.io.${NC}"
-    echo -e "You'll need: Fly.io account, Anthropic API key"
+    echo -e "You'll need: Fly.io account, Anthropic or OpenAI API key"
     echo ""
 
     if ! prompt_confirm "Ready to begin?"; then
