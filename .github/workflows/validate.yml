@@ -1,0 +1,123 @@
+name: Validate Scripts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '*.sh'
+      - 'Dockerfile'
+      - 'fly.toml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '*.sh'
+      - 'Dockerfile'
+      - 'fly.toml'
+  # Run weekly to catch issues with external dependencies
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 9am UTC
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  validate-scripts:
+    name: Validate Shell Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check bash syntax - install.sh
+        run: bash -n install.sh
+
+      - name: Check bash syntax - moltbot-cli.sh
+        run: bash -n moltbot-cli.sh
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: ShellCheck - install.sh
+        run: shellcheck -e SC2086,SC2034 install.sh || true  # Warnings only
+
+      - name: ShellCheck - moltbot-cli.sh
+        run: shellcheck -e SC2086,SC2034 moltbot-cli.sh || true  # Warnings only
+
+  validate-dockerfile:
+    name: Validate Dockerfile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install hadolint
+        run: |
+          wget -q https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          chmod +x hadolint-Linux-x86_64
+          sudo mv hadolint-Linux-x86_64 /usr/local/bin/hadolint
+
+      - name: Lint Dockerfile
+        run: hadolint Dockerfile || true  # Warnings only
+
+  test-install-dry-run:
+    name: Test Install Script (Dry Run)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Test install.sh loads without errors
+        run: |
+          # Source the script to check for syntax errors in functions
+          bash -n install.sh
+          echo "✅ install.sh syntax valid"
+
+      - name: Test moltbot-cli.sh help
+        run: |
+          chmod +x moltbot-cli.sh
+          # Test help command (doesn't require fly CLI)
+          ./moltbot-cli.sh --help | grep -q "MoltBot CLI" && echo "✅ CLI help works"
+
+  test-curl-install:
+    name: Test curl | bash Pattern
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start local server
+        run: |
+          python3 -m http.server 8080 &
+          sleep 2
+
+      - name: Test install.sh download and syntax
+        run: |
+          curl -fsSL http://localhost:8080/install.sh -o /tmp/install.sh
+          bash -n /tmp/install.sh
+          echo "✅ Downloaded install.sh is valid"
+
+      - name: Test moltbot-cli.sh download and help
+        run: |
+          curl -fsSL http://localhost:8080/moltbot-cli.sh -o /tmp/moltbot-cli.sh
+          chmod +x /tmp/moltbot-cli.sh
+          bash -n /tmp/moltbot-cli.sh
+          /tmp/moltbot-cli.sh --help | grep -q "MoltBot CLI"
+          echo "✅ Downloaded moltbot-cli.sh is valid"
+
+  validate-fly-toml:
+    name: Validate fly.toml
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Validate fly.toml syntax
+        run: |
+          # Basic TOML validation
+          python3 -c "import tomllib; tomllib.load(open('fly.toml', 'rb'))" && echo "✅ fly.toml is valid TOML"

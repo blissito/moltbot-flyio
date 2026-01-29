@@ -63,6 +63,67 @@ print_help() {
 }
 
 # ============================================================================
+# Dependency Management
+# ============================================================================
+
+ensure_jq() {
+    if command -v jq &> /dev/null; then
+        return 0
+    fi
+
+    log_warn "jq not found. It's required for channel management."
+    echo ""
+
+    # Detect OS and offer auto-install
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        if command -v brew &> /dev/null; then
+            read -p "Install jq with Homebrew? (Y/n) " INSTALL_JQ
+            if [[ "${INSTALL_JQ:-y}" =~ ^[Yy]$ ]]; then
+                log_info "Installing jq..."
+                brew install jq
+                if command -v jq &> /dev/null; then
+                    log_success "jq installed!"
+                    return 0
+                fi
+            fi
+        else
+            log_info "Install jq manually:"
+            echo "  brew install jq"
+            echo "  # or download from https://stedolan.github.io/jq/download/"
+        fi
+    elif [[ -f /etc/debian_version ]]; then
+        read -p "Install jq with apt? (requires sudo) (Y/n) " INSTALL_JQ
+        if [[ "${INSTALL_JQ:-y}" =~ ^[Yy]$ ]]; then
+            log_info "Installing jq..."
+            sudo apt-get update && sudo apt-get install -y jq
+            if command -v jq &> /dev/null; then
+                log_success "jq installed!"
+                return 0
+            fi
+        fi
+    elif [[ -f /etc/redhat-release ]]; then
+        read -p "Install jq with yum? (requires sudo) (Y/n) " INSTALL_JQ
+        if [[ "${INSTALL_JQ:-y}" =~ ^[Yy]$ ]]; then
+            log_info "Installing jq..."
+            sudo yum install -y jq
+            if command -v jq &> /dev/null; then
+                log_success "jq installed!"
+                return 0
+            fi
+        fi
+    else
+        log_info "Install jq manually:"
+        echo "  # Debian/Ubuntu: sudo apt install jq"
+        echo "  # RHEL/CentOS:   sudo yum install jq"
+        echo "  # macOS:         brew install jq"
+        echo "  # Download:      https://stedolan.github.io/jq/download/"
+    fi
+
+    log_error "jq is required but not installed"
+    exit 1
+}
+
+# ============================================================================
 # App Detection
 # ============================================================================
 
@@ -235,13 +296,8 @@ cmd_add_channel() {
         exit 1
     fi
 
-    # Check if jq is available
-    if ! command -v jq &> /dev/null; then
-        log_error "jq is required for this command. Install it first:"
-        echo "  brew install jq  # macOS"
-        echo "  apt install jq   # Linux"
-        exit 1
-    fi
+    # Ensure jq is available (auto-install if needed)
+    ensure_jq
 
     # Add channel based on type
     case "$CHANNEL" in
@@ -316,11 +372,8 @@ cmd_remove_channel() {
         exit 1
     fi
 
-    # Check if jq is available
-    if ! command -v jq &> /dev/null; then
-        log_error "jq is required. Install it: brew install jq (macOS) or apt install jq (Linux)"
-        exit 1
-    fi
+    # Ensure jq is available (auto-install if needed)
+    ensure_jq
 
     # Remove channel
     NEW_CONFIG=$(echo "$CONFIG" | jq "del(.channels.${CHANNEL}) | del(.plugins.entries.${CHANNEL})")
