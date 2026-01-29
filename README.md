@@ -1,22 +1,32 @@
-# MoltBot Fly.io Deployment
+# MoltBot Cloud Deployment
 
-Deploy your personal AI assistant (Claude or OpenAI) to [Fly.io](https://fly.io) in minutes.
+Deploy your personal AI assistant (Claude or OpenAI) to the cloud in minutes.
+
+## Supported Providers
+
+| Provider | Status | Notes |
+|----------|--------|-------|
+| [Fly.io](https://fly.io) | Recommended | Free tier available |
+| [DigitalOcean](https://digitalocean.com) | Supported | App Platform |
 
 ## Requirements
 
-- [Fly.io account](https://fly.io) (free tier works)
-- [flyctl CLI](https://fly.io/docs/hands-on/install-flyctl/) installed
 - [Anthropic API key](https://console.anthropic.com/settings/keys) **or** [OpenAI API key](https://platform.openai.com/api-keys)
+- Cloud provider account (Fly.io or DigitalOcean)
+
+> **Note:** The installer auto-installs `flyctl` or `doctl` CLI if missing.
 
 ## Cost Estimate
 
-| Component | Monthly Cost |
-|-----------|-------------|
-| Fly.io VM (4GB RAM, 2 vCPU) | ~$22 USD |
-| Persistent volume (1GB) | ~$0.15 USD |
-| Dedicated IPv4 (optional) | $2 USD |
-| **Total hosting** | **~$22-25 USD/month** |
-| Anthropic API | Variable (pay per use) |
+| Provider | Component | Monthly Cost |
+|----------|-----------|-------------|
+| **Fly.io** | VM (4GB RAM, 2 vCPU) | ~$22 USD |
+| | Persistent volume (1GB) | ~$0.15 USD |
+| | Dedicated IPv4 (optional) | $2 USD |
+| | **Subtotal** | **~$22-25 USD** |
+| **DigitalOcean** | App Platform (Basic) | ~$12 USD |
+| | **Subtotal** | **~$12 USD** |
+| **AI API** | Anthropic/OpenAI | Variable (pay per use) |
 
 > MoltBot software is free and open source. You pay only for hosting and API usage.
 
@@ -31,13 +41,15 @@ curl -fsSL https://raw.githubusercontent.com/blissito/moltbot-flyio/main/install
 ```
 
 The installer will:
-1. Check requirements (git, flyctl, openssl)
-2. Authenticate with Fly.io
-3. Prompt for app name, region, and API key
-4. Create app, volume, and secrets
-5. Deploy with 4GB RAM
-6. Configure the gateway
-7. Output your dashboard URL and token
+1. Check requirements (git, openssl, jq) and auto-install CLI tools
+2. Let you choose cloud provider (Fly.io or DigitalOcean)
+3. Authenticate with your provider
+4. Prompt for app name (auto-normalized to valid format), region, and API key
+5. Let you choose AI provider (Anthropic or OpenAI) and model
+6. Configure channels (WhatsApp, Telegram, Discord, Slack)
+7. Create app, storage, and secrets
+8. Deploy and configure the gateway
+9. Output your dashboard URL and token
 
 ![Deployment Successful](success.png)
 
@@ -377,6 +389,14 @@ fly deploy --app your-app-name
   ```
 
 ---
+
+## Features
+
+- **Multi-cloud**: Deploy to Fly.io or DigitalOcean
+- **Multi-AI**: Choose between Anthropic (Claude) or OpenAI (GPT)
+- **Multi-channel**: WhatsApp, Telegram, Discord, Slack
+- **Auto-install**: CLI tools installed automatically if missing
+- **Smart validation**: App names auto-normalized to valid format (e.g., "perroBot" becomes "perrobot")
 
 ## More Information
 
