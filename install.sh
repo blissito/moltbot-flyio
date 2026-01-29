@@ -405,7 +405,14 @@ configure_gateway() {
 {
   "gateway": {
     "port": 3000,
-    "trustedProxies": ["172.16.7.18"]
+    "trustedProxies": ["172.16.7.18"],
+    "auth": {
+      "mode": "token",
+      "token": "${GATEWAY_TOKEN}"
+    },
+    "controlUi": {
+      "allowInsecureAuth": true
+    }
   },
   "agents": {
     "defaults": {
