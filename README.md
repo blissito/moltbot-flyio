@@ -43,6 +43,60 @@ The installer will:
 
 ---
 
+## MoltBot CLI (Post-Installation)
+
+After installation, use the CLI to manage your bot:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/blissito/moltbot-flyio/main/moltbot-cli.sh | bash -s -- <command>
+```
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `status` | Show app status and dashboard URL |
+| `logs` | Stream live logs (Ctrl+C to exit) |
+| `restart` | Restart the bot |
+| `channels` | List enabled channels |
+| `add-whatsapp` | Enable WhatsApp channel |
+| `add-telegram` | Enable Telegram (prompts for token) |
+| `add-discord` | Enable Discord (prompts for token) |
+| `add-slack` | Enable Slack (prompts for token) |
+| `remove-channel <name>` | Disable a channel |
+| `config` | Show current configuration |
+| `update` | Update MoltBot to latest version |
+
+### Examples
+
+```bash
+# Check status
+curl -fsSL .../moltbot-cli.sh | bash -s -- status
+
+# Add Telegram channel
+curl -fsSL .../moltbot-cli.sh | bash -s -- add-telegram
+
+# View logs
+curl -fsSL .../moltbot-cli.sh | bash -s -- logs
+
+# Specify app name
+curl -fsSL .../moltbot-cli.sh | bash -s -- status --app my-moltbot
+```
+
+### Local Usage
+
+If you have the repo cloned:
+
+```bash
+./moltbot-cli.sh status
+./moltbot-cli.sh add-telegram
+./moltbot-cli.sh channels
+```
+
+> **Note:** The CLI requires `jq` for channel management. Install with `brew install jq` (macOS) or `apt install jq` (Linux).
+
+---
+
 ## Manual Deployment
 
 ### Step 1: Clone this repository
