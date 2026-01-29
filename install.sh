@@ -350,8 +350,15 @@ gather_config() {
     # Generate gateway token
     GATEWAY_TOKEN=$(openssl rand -hex 32)
 
+    # Show selected channels summary
     echo ""
+    SELECTED_CHANNELS=""
+    [ "$WHATSAPP_ENABLED" = "true" ] && SELECTED_CHANNELS="${SELECTED_CHANNELS}WhatsApp "
+    [ "$TELEGRAM_ENABLED" = "true" ] && SELECTED_CHANNELS="${SELECTED_CHANNELS}Telegram "
+    [ "$DISCORD_ENABLED" = "true" ] && SELECTED_CHANNELS="${SELECTED_CHANNELS}Discord "
+    [ "$SLACK_ENABLED" = "true" ] && SELECTED_CHANNELS="${SELECTED_CHANNELS}Slack "
     log_success "Configuration complete!"
+    log_info "Channels selected: ${WHITE}${SELECTED_CHANNELS:-None}${NC}"
 }
 
 # ============================================================================
@@ -614,9 +621,22 @@ configure_gateway() {
 EOF
 )
 
-    echo "$CONFIG_JSON" | fly ssh console --app "$APP_NAME" -C "tee /data/moltbot.json" > /dev/null 2>&1
+    # Fix permissions on /data (volume might be root-owned, but container runs as node)
+    fly ssh console --app "$APP_NAME" -C "sudo chown -R node:node /data 2>/dev/null || true" > /dev/null 2>&1
 
-    log_success "Gateway configured!"
+    # Write config file
+    if ! echo "$CONFIG_JSON" | fly ssh console --app "$APP_NAME" -C "cat > /data/moltbot.json"; then
+        log_error "Failed to write config file"
+        log_warn "You may need to manually configure channels in the dashboard"
+    else
+        # Verify the config was written correctly
+        WRITTEN_CHANNELS=$(fly ssh console --app "$APP_NAME" -C "cat /data/moltbot.json 2>/dev/null" | grep -o '"whatsapp"\|"telegram"\|"discord"\|"slack"' | tr '\n' ' ' || true)
+        if [ -n "$WRITTEN_CHANNELS" ]; then
+            log_success "Gateway configured with channels: ${WRITTEN_CHANNELS}"
+        else
+            log_warn "Config written but could not verify channels"
+        fi
+    fi
 
     # Restart to apply config
     if [ -n "$MACHINE_ID" ]; then
