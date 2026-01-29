@@ -381,23 +381,57 @@ clone_repo() {
 create_fly_resources() {
     log_step "Step 5/8: Creating Fly.io resources"
 
-    # Update fly.toml with app name and region
-    log_info "Configuring fly.toml..."
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        sed -i '' "s/^app = .*/app = \"${APP_NAME}\"/" fly.toml
-        sed -i '' "s/^primary_region = .*/primary_region = \"${REGION}\"/" fly.toml
-    else
-        sed -i "s/^app = .*/app = \"${APP_NAME}\"/" fly.toml
-        sed -i "s/^primary_region = .*/primary_region = \"${REGION}\"/" fly.toml
-    fi
+    # Famous bot names for suggestions
+    BOT_NAMES=("r2d2" "c3po" "wall-e" "hal9000" "jarvis" "ultron" "optimus" "bender" "rosie" "johnny5" "data" "bishop" "robby" "gerty" "baymax" "tars" "case" "sonny" "marvin" "ash")
+    BOT_INDEX=0
 
-    # Create app
-    log_info "Creating app ${WHITE}${APP_NAME}${NC}..."
-    if ! fly apps create "$APP_NAME" --org personal 2>&1; then
-        log_error "Failed to create app. The name may already be taken."
-        exit 1
-    fi
-    log_success "App created!"
+    # Create app with retry on name collision
+    while true; do
+        # Update fly.toml with app name and region
+        log_info "Configuring fly.toml..."
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            sed -i '' "s/^app = .*/app = \"${APP_NAME}\"/" fly.toml
+            sed -i '' "s/^primary_region = .*/primary_region = \"${REGION}\"/" fly.toml
+        else
+            sed -i "s/^app = .*/app = \"${APP_NAME}\"/" fly.toml
+            sed -i "s/^primary_region = .*/primary_region = \"${REGION}\"/" fly.toml
+        fi
+
+        log_info "Creating app ${WHITE}${APP_NAME}${NC}..."
+        CREATE_OUTPUT=$(fly apps create "$APP_NAME" --org personal 2>&1)
+        CREATE_EXIT=$?
+
+        if [ $CREATE_EXIT -eq 0 ]; then
+            log_success "App created!"
+            break
+        fi
+
+        # Check if it's a name collision error
+        if echo "$CREATE_OUTPUT" | grep -q "Name has already been taken"; then
+            log_warn "Name '${APP_NAME}' is already taken"
+
+            # Suggest a new name using famous bot names
+            if [ $BOT_INDEX -lt ${#BOT_NAMES[@]} ]; then
+                SUGGESTED_NAME="${BOT_NAMES[$BOT_INDEX]}-moltbot-$(openssl rand -hex 2)"
+                BOT_INDEX=$((BOT_INDEX + 1))
+            else
+                SUGGESTED_NAME="moltbot-$(openssl rand -hex 4)"
+            fi
+
+            echo ""
+            APP_NAME=$(prompt_input "Try a different name" "$SUGGESTED_NAME")
+
+            if [[ ! "$APP_NAME" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]] && [[ ! "$APP_NAME" =~ ^[a-z0-9]$ ]]; then
+                log_warn "App name must be lowercase, alphanumeric, and can contain hyphens"
+                continue
+            fi
+        else
+            # Different error, show it and exit
+            echo "$CREATE_OUTPUT"
+            log_error "Failed to create app"
+            exit 1
+        fi
+    done
 
     # Create volume
     log_info "Creating persistent volume..."
