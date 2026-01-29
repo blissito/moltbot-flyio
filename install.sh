@@ -398,7 +398,7 @@ create_fly_resources() {
         fi
 
         log_info "Creating app ${WHITE}${APP_NAME}${NC}..."
-        CREATE_OUTPUT=$(fly apps create "$APP_NAME" --org personal 2>&1)
+        CREATE_OUTPUT=$(fly apps create "$APP_NAME" --org personal 2>&1) || true
         CREATE_EXIT=$?
 
         if [ $CREATE_EXIT -eq 0 ]; then
@@ -406,8 +406,8 @@ create_fly_resources() {
             break
         fi
 
-        # Check if it's a name collision error
-        if echo "$CREATE_OUTPUT" | grep -q "Name has already been taken"; then
+        # Check if it's a name collision error (case insensitive, multiple patterns)
+        if echo "$CREATE_OUTPUT" | grep -qiE "already been taken|name.*taken|already exists"; then
             log_warn "Name '${APP_NAME}' is already taken"
 
             # Suggest a new name using famous bot names
@@ -426,8 +426,8 @@ create_fly_resources() {
                 continue
             fi
         else
-            # Different error, show it and exit
-            echo "$CREATE_OUTPUT"
+            # Different error - show it and exit
+            echo -e "  ${RED}${CREATE_OUTPUT}${NC}"
             log_error "Failed to create app"
             exit 1
         fi
