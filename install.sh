@@ -214,7 +214,7 @@ gather_config() {
 
     # App name
     while true; do
-        APP_NAME=$(prompt_input "App name (must be unique globally)" "my-moltbot")
+        APP_NAME=$(prompt_input "App name (must be unique globally)" "blissmoltbot")
 
         if [[ ! "$APP_NAME" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]] && [[ ! "$APP_NAME" =~ ^[a-z0-9]$ ]]; then
             log_warn "App name must be lowercase, alphanumeric, and can contain hyphens"
@@ -301,6 +301,42 @@ gather_config() {
             *) MODEL="openai/gpt-4o" ;;
         esac
         FALLBACK_MODEL="openai/gpt-4o-mini"
+    fi
+
+    # Channel configuration
+    echo ""
+    echo -e "${WHITE}Select channels to enable:${NC}"
+    echo ""
+
+    WHATSAPP_ENABLED="false"
+    TELEGRAM_ENABLED="false"
+    DISCORD_ENABLED="false"
+    SLACK_ENABLED="false"
+
+    if prompt_confirm "Enable WhatsApp?" "y"; then
+        WHATSAPP_ENABLED="true"
+    fi
+
+    if prompt_confirm "Enable Telegram?" "n"; then
+        TELEGRAM_ENABLED="true"
+        echo ""
+        log_info "Get your bot token from: ${WHITE}@BotFather on Telegram${NC}"
+        TELEGRAM_TOKEN=$(prompt_secret "Telegram Bot Token (or leave empty to configure later)")
+    fi
+
+    if prompt_confirm "Enable Discord?" "n"; then
+        DISCORD_ENABLED="true"
+        echo ""
+        log_info "Get your bot token from: ${WHITE}https://discord.com/developers/applications${NC}"
+        DISCORD_TOKEN=$(prompt_secret "Discord Bot Token (or leave empty to configure later)")
+    fi
+
+    if prompt_confirm "Enable Slack?" "n"; then
+        SLACK_ENABLED="true"
+        echo ""
+        log_info "Get tokens from: ${WHITE}https://api.slack.com/apps${NC}"
+        SLACK_BOT_TOKEN=$(prompt_secret "Slack Bot Token (xoxb-..., or leave empty)")
+        SLACK_APP_TOKEN=$(prompt_secret "Slack App Token (xapp-..., or leave empty)")
     fi
 
     # Generate gateway token
@@ -455,6 +491,47 @@ configure_gateway() {
         AUTH_PROFILE='"openai:default": { "mode": "token", "provider": "openai" }'
     fi
 
+    # Build channels config dynamically
+    CHANNELS_CONFIG=""
+
+    if [ "$WHATSAPP_ENABLED" = "true" ]; then
+        CHANNELS_CONFIG="${CHANNELS_CONFIG}\"whatsapp\": { \"enabled\": true, \"dmPolicy\": \"pairing\", \"sendReadReceipts\": true, \"textChunkLimit\": 4000 },"
+    fi
+
+    if [ "$TELEGRAM_ENABLED" = "true" ]; then
+        if [ -n "$TELEGRAM_TOKEN" ]; then
+            CHANNELS_CONFIG="${CHANNELS_CONFIG}\"telegram\": { \"enabled\": true, \"botToken\": \"${TELEGRAM_TOKEN}\", \"dmPolicy\": \"pairing\" },"
+        else
+            CHANNELS_CONFIG="${CHANNELS_CONFIG}\"telegram\": { \"enabled\": true, \"dmPolicy\": \"pairing\" },"
+        fi
+    fi
+
+    if [ "$DISCORD_ENABLED" = "true" ]; then
+        if [ -n "$DISCORD_TOKEN" ]; then
+            CHANNELS_CONFIG="${CHANNELS_CONFIG}\"discord\": { \"enabled\": true, \"token\": \"${DISCORD_TOKEN}\", \"dm\": { \"dmPolicy\": \"pairing\" } },"
+        else
+            CHANNELS_CONFIG="${CHANNELS_CONFIG}\"discord\": { \"enabled\": true, \"dm\": { \"dmPolicy\": \"pairing\" } },"
+        fi
+    fi
+
+    if [ "$SLACK_ENABLED" = "true" ]; then
+        SLACK_TOKENS=""
+        [ -n "$SLACK_BOT_TOKEN" ] && SLACK_TOKENS="\"botToken\": \"${SLACK_BOT_TOKEN}\", "
+        [ -n "$SLACK_APP_TOKEN" ] && SLACK_TOKENS="${SLACK_TOKENS}\"appToken\": \"${SLACK_APP_TOKEN}\", "
+        CHANNELS_CONFIG="${CHANNELS_CONFIG}\"slack\": { \"enabled\": true, ${SLACK_TOKENS}\"dmPolicy\": \"pairing\" },"
+    fi
+
+    # Remove trailing comma
+    CHANNELS_CONFIG=$(echo "$CHANNELS_CONFIG" | sed 's/,$//')
+
+    # Build plugins entries
+    PLUGINS_ENTRIES=""
+    [ "$WHATSAPP_ENABLED" = "true" ] && PLUGINS_ENTRIES="${PLUGINS_ENTRIES}\"whatsapp\": { \"enabled\": true },"
+    [ "$TELEGRAM_ENABLED" = "true" ] && PLUGINS_ENTRIES="${PLUGINS_ENTRIES}\"telegram\": { \"enabled\": true },"
+    [ "$DISCORD_ENABLED" = "true" ] && PLUGINS_ENTRIES="${PLUGINS_ENTRIES}\"discord\": { \"enabled\": true },"
+    [ "$SLACK_ENABLED" = "true" ] && PLUGINS_ENTRIES="${PLUGINS_ENTRIES}\"slack\": { \"enabled\": true },"
+    PLUGINS_ENTRIES=$(echo "$PLUGINS_ENTRIES" | sed 's/,$//')
+
     # Modern config structure with agents and auth.profiles
     CONFIG_JSON=$(cat << EOF
 {
@@ -484,15 +561,11 @@ configure_gateway() {
     }
   },
   "channels": {
-    "whatsapp": {
-      "dmPolicy": "pairing",
-      "sendReadReceipts": true,
-      "textChunkLimit": 4000
-    }
+    ${CHANNELS_CONFIG}
   },
   "plugins": {
     "entries": {
-      "whatsapp": { "enabled": true }
+      ${PLUGINS_ENTRIES}
     }
   }
 }
@@ -541,10 +614,29 @@ print_success() {
     echo -e "${YELLOW}can pair their device and access your bot permanently.${NC}"
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
+    # Build enabled channels list
+    ENABLED_CHANNELS=""
+    [ "$WHATSAPP_ENABLED" = "true" ] && ENABLED_CHANNELS="${ENABLED_CHANNELS}WhatsApp, "
+    [ "$TELEGRAM_ENABLED" = "true" ] && ENABLED_CHANNELS="${ENABLED_CHANNELS}Telegram, "
+    [ "$DISCORD_ENABLED" = "true" ] && ENABLED_CHANNELS="${ENABLED_CHANNELS}Discord, "
+    [ "$SLACK_ENABLED" = "true" ] && ENABLED_CHANNELS="${ENABLED_CHANNELS}Slack, "
+    ENABLED_CHANNELS=$(echo "$ENABLED_CHANNELS" | sed 's/, $//')
+
     echo -e "${WHITE}Next steps:${NC}"
     echo -e "  1. Open the dashboard URL above"
     echo -e "  2. Your browser will be paired automatically on first access"
-    echo -e "  3. Connect WhatsApp by scanning QR in the dashboard"
+    if [ "$WHATSAPP_ENABLED" = "true" ]; then
+        echo -e "  3. Connect WhatsApp by scanning QR in the dashboard"
+    fi
+    if [ "$TELEGRAM_ENABLED" = "true" ] && [ -z "$TELEGRAM_TOKEN" ]; then
+        echo -e "  3. Configure Telegram bot token in the dashboard"
+    fi
+    if [ "$DISCORD_ENABLED" = "true" ] && [ -z "$DISCORD_TOKEN" ]; then
+        echo -e "  3. Configure Discord bot token in the dashboard"
+    fi
+    if [ "$SLACK_ENABLED" = "true" ] && [ -z "$SLACK_BOT_TOKEN" ]; then
+        echo -e "  3. Configure Slack tokens in the dashboard"
+    fi
     echo ""
     echo -e "${WHITE}Security:${NC}"
     echo -e "  - Your token is like a password - don't share it"
@@ -554,6 +646,7 @@ print_success() {
     echo ""
     echo -e "${WHITE}Provider: ${GREEN}${PROVIDER}${NC}"
     echo -e "${WHITE}Model: ${GREEN}${MODEL}${NC}"
+    echo -e "${WHITE}Channels: ${GREEN}${ENABLED_CHANNELS:-None}${NC}"
     echo -e "${WHITE}Memory: ${GREEN}4GB${NC} (prevents OOM errors)"
     echo -e "${WHITE}Estimated monthly cost: ${GREEN}\$22-25 USD${NC} (hosting only, API usage extra)"
     echo ""
