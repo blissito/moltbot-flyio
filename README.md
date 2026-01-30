@@ -361,6 +361,40 @@ fly ssh console --command "rm -f /data/gateway.*.lock"
 fly machine restart MACHINE_ID --app your-app-name
 ```
 
+### Invalid Channel Tokens (Slack Crash)
+
+If logs show `invalid_auth` errors and the gateway keeps restarting:
+
+```
+[slack] [default] starting provider
+Error: An API error occurred: invalid_auth
+INFO Main child exited normally with code: 1
+```
+
+**Cause:** Invalid Slack tokens crash the entire gateway. This is a known issue with Slack integration (Discord/Telegram handle invalid tokens gracefully).
+
+**Fix:**
+1. Remove invalid Slack secrets:
+   ```bash
+   fly secrets unset SLACK_BOT_TOKEN SLACK_APP_TOKEN --app your-app-name
+   ```
+
+2. Disable Slack in config:
+   ```bash
+   fly ssh console --app your-app-name
+   # Edit /data/moltbot.json and set slack.enabled to false
+   ```
+
+3. Restart: `fly machines restart MACHINE_ID --app your-app-name`
+
+**Token Format Reference:**
+| Channel | Token Format |
+|---------|-------------|
+| Telegram | `123456789:ABC-DEF...` (numbers:alphanumeric) |
+| Discord | Long base64-like string |
+| Slack Bot | Starts with `xoxb-` |
+| Slack App | Starts with `xapp-` |
+
 ---
 
 ## Useful Commands
