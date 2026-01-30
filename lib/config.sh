@@ -219,21 +219,19 @@ generate_config_json() {
         channels_config="${channels_config}\"whatsapp\": { \"dmPolicy\": \"pairing\", \"sendReadReceipts\": true },"
     fi
 
-    # Only enable channels that require tokens if tokens are provided
-    # Otherwise the gateway will crash trying to connect without credentials
+    # Channel tokens come from environment variables (Fly secrets), not from config
+    # Only enable channels if tokens were provided during setup
 
     if [ "$TELEGRAM_ENABLED" = "true" ] && [ -n "$TELEGRAM_TOKEN" ]; then
-        channels_config="${channels_config}\"telegram\": { \"enabled\": true, \"botToken\": \"${TELEGRAM_TOKEN}\", \"dmPolicy\": \"pairing\" },"
+        channels_config="${channels_config}\"telegram\": { \"enabled\": true, \"dmPolicy\": \"pairing\" },"
     fi
 
     if [ "$DISCORD_ENABLED" = "true" ] && [ -n "$DISCORD_TOKEN" ]; then
-        channels_config="${channels_config}\"discord\": { \"enabled\": true, \"token\": \"${DISCORD_TOKEN}\", \"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
+        channels_config="${channels_config}\"discord\": { \"enabled\": true, \"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
     fi
 
     if [ "$SLACK_ENABLED" = "true" ] && [ -n "$SLACK_BOT_TOKEN" ]; then
-        local slack_tokens="\"botToken\": \"${SLACK_BOT_TOKEN}\", "
-        [ -n "$SLACK_APP_TOKEN" ] && slack_tokens="${slack_tokens}\"appToken\": \"${SLACK_APP_TOKEN}\", "
-        channels_config="${channels_config}\"slack\": { \"enabled\": true, ${slack_tokens}\"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
+        channels_config="${channels_config}\"slack\": { \"enabled\": true, \"dm\": { \"enabled\": true, \"policy\": \"pairing\" } },"
     fi
 
     # Remove trailing comma

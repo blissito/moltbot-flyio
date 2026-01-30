@@ -186,9 +186,16 @@ create_cloud_resources() {
 configure_secrets() {
     log_step "Step 6/8: Configuring secrets"
 
-    provider_set_secrets "$APP_NAME" \
-        "${API_KEY_NAME}=${API_KEY}" \
-        "CLAWDBOT_GATEWAY_TOKEN=${GATEWAY_TOKEN}"
+    # Base secrets (always required)
+    local secrets=("${API_KEY_NAME}=${API_KEY}" "CLAWDBOT_GATEWAY_TOKEN=${GATEWAY_TOKEN}")
+
+    # Add channel tokens if provided
+    [ -n "$TELEGRAM_TOKEN" ] && secrets+=("TELEGRAM_BOT_TOKEN=${TELEGRAM_TOKEN}")
+    [ -n "$DISCORD_TOKEN" ] && secrets+=("DISCORD_BOT_TOKEN=${DISCORD_TOKEN}")
+    [ -n "$SLACK_BOT_TOKEN" ] && secrets+=("SLACK_BOT_TOKEN=${SLACK_BOT_TOKEN}")
+    [ -n "$SLACK_APP_TOKEN" ] && secrets+=("SLACK_APP_TOKEN=${SLACK_APP_TOKEN}")
+
+    provider_set_secrets "$APP_NAME" "${secrets[@]}"
 }
 
 # ============================================================================
