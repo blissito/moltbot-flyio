@@ -197,7 +197,10 @@ cat > /data/moltbot.json << 'EOF'
 {
   "gateway": {
     "port": 3000,
-    "trustedProxies": ["172.16.7.18"]
+    "bind": "lan",
+    "controlUi": {
+      "dangerouslyDisableDeviceAuth": true
+    }
   },
   "agents": {
     "defaults": {
@@ -322,7 +325,26 @@ fly ssh console --app your-app-name --command "cat /data/moltbot.json"
 
 ### Pairing Required
 
-If dashboard shows "pairing required":
+If dashboard shows "pairing required" or error code 1008:
+
+**Option 1: Disable device auth for cloud deployments (recommended)**
+
+Edit `/data/moltbot.json` to include:
+```json
+{
+  "gateway": {
+    "controlUi": {
+      "dangerouslyDisableDeviceAuth": true
+    }
+  }
+}
+```
+
+Then restart: `fly machines restart MACHINE_ID --app your-app-name`
+
+> **Note:** This is safe for cloud deployments. The gateway token still protects access. Device auth is primarily useful for local deployments where you want an extra layer of security.
+
+**Option 2: Manual device approval**
 
 ```bash
 fly ssh console --app your-app-name

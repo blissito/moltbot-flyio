@@ -249,11 +249,16 @@ generate_config_json() {
 
     # Generate the JSON config
     # Note: gateway.auth.token comes from CLAWDBOT_GATEWAY_TOKEN env var
+    # controlUi.dangerouslyDisableDeviceAuth allows web UI connections without device pairing
+    # (required for cloud deployments where connections come from proxy IPs, not localhost)
     cat << EOF
 {
   "gateway": {
     "port": 3000,
-    "bind": "lan"
+    "bind": "lan",
+    "controlUi": {
+      "dangerouslyDisableDeviceAuth": true
+    }
   },
   "agents": {
     "defaults": {
